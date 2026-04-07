@@ -1,8 +1,24 @@
 import { useEffect, useState } from "react";
 import api from "../api/apiClient";
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  Select,
+  MenuItem,
+  Typography,
+  Box,
+  IconButton,
+  Alert
+} from "@mui/material";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 export default function InvoiceModal({ open, onClose, onSuccess, editData }) {
   const [customers, setCustomers] = useState([]);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
 
   const [form, setForm] = useState({
     customerId: "",
@@ -13,42 +29,26 @@ export default function InvoiceModal({ open, onClose, onSuccess, editData }) {
   });
 
   const [total, setTotal] = useState(0);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     loadCustomers();
   }, []);
 
   const loadCustomers = async () => {
-    try {
-      const res = await api.get("/invoices/dropdown"); 
-      setCustomers(res.data || []);
-    } catch (err) {
-      console.error(err);
-    }
+    const res = await api.get("/invoices/dropdown");
+    setCustomers(res.data || []);
   };
 
+  // SET EDIT DATA
   useEffect(() => {
     if (editData && open) {
       setForm({
-        customerId: editData.customerId || "",
-
-        invoiceDate: editData.invoiceDate
-          ? editData.invoiceDate.split("T")[0]
-          : "",
-
+        customerId: editData.customerId,
+        invoiceDate: editData.invoiceDate?.split("T")[0] || "",
         terms: editData.terms || 0,
-
-        dueDate: editData.dueDate
-          ? editData.dueDate.split("T")[0]
-          : "",
-
-        lines: (editData.lines || []).map((l) => ({
-          description: l.description || "",
-          quantity: Number(l.quantity) || 1,
-          unitPrice: Number(l.unitPrice) || 0,
-          lineTotal:
-            (Number(l.quantity) || 0) * (Number(l.unitPrice) || 0)
-        }))
+        dueDate: editData.dueDate?.split("T")[0] || "",
+        lines: editData.lines || []
       });
     }
 
@@ -63,8 +63,15 @@ export default function InvoiceModal({ open, onClose, onSuccess, editData }) {
     }
   }, [editData, open]);
 
+  // CUSTOMER EMAIL
   useEffect(() => {
-    if (form.invoiceDate && form.terms >= 0) {
+    const cust = customers.find(c => c.customerId == form.customerId);
+    setSelectedCustomer(cust);
+  }, [form.customerId, customers]);
+
+  // DUE DATE
+  useEffect(() => {
+    if (form.invoiceDate) {
       const d = new Date(form.invoiceDate);
       d.setDate(d.getDate() + Number(form.terms));
 
@@ -75,167 +82,166 @@ export default function InvoiceModal({ open, onClose, onSuccess, editData }) {
     }
   }, [form.invoiceDate, form.terms]);
 
+  // TOTAL
   useEffect(() => {
-    const sum = form.lines.reduce(
-      (acc, l) => acc + (Number(l.lineTotal) || 0),
-      0
-    );
+    const sum = form.lines.reduce((a, l) => a + (l.lineTotal || 0), 0);
     setTotal(sum);
   }, [form.lines]);
 
   const addRow = () => {
     setForm(prev => ({
       ...prev,
-      lines: [
-        ...prev.lines,
-        { description: "", quantity: 1, unitPrice: 0, lineTotal: 0 }
-      ]
+      lines: [...prev.lines, { description: "", quantity: 1, unitPrice: 0, lineTotal: 0 }]
     }));
   };
 
   const updateLine = (i, field, value) => {
     const updated = [...form.lines];
     updated[i][field] = value;
-
-    const qty = Number(updated[i].quantity) || 0;
-    const price = Number(updated[i].unitPrice) || 0;
-
-    updated[i].lineTotal = qty * price;
-
+    updated[i].lineTotal = updated[i].quantity * updated[i].unitPrice;
     setForm(prev => ({ ...prev, lines: updated }));
   };
 
   const removeRow = (i) => {
-    const updated = form.lines.filter((_, index) => index !== i);
-    setForm(prev => ({ ...prev, lines: updated }));
+    setForm(prev => ({
+      ...prev,
+      lines: prev.lines.filter((_, index) => index !== i)
+    }));
   };
 
   const handleSubmit = async () => {
-    if (!form.customerId) return alert("Select customer");
-    if (!form.invoiceDate) return alert("Select date");
-    if (!form.lines.length) return alert("Add item");
+    if (!form.customerId || !form.invoiceDate || !form.lines.length) {
+      setError("All fields required");
+      return;
+    }
 
     try {
+      const payload = {
+        ...form,
+        customerId: Number(form.customerId),
+        totalAmount: total
+      };
+
       if (editData) {
-       
-        await api.put(`/invoices/${editData.invoiceId}`, {
-          ...form,
-          customerId: Number(form.customerId),
-          totalAmount: total
-        });
-
-        onSuccess("Invoice updated");
+        await api.put(`/invoices/${editData.invoiceId}`, payload);
+        onSuccess("Updated");
       } else {
-       
-        await api.post("/invoices", {
-          ...form,
-          customerId: Number(form.customerId),
-          totalAmount: total
-        });
-
-        onSuccess("Invoice created");
+        await api.post("/invoices", payload);
+        onSuccess("Created");
       }
 
       onClose();
-    } catch (err) {
-      console.error(err);
-      alert("Error saving invoice");
+    } catch {
+      setError("Error saving invoice");
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div style={{ background: "#00000088", position: "fixed", inset: 0 }}>
-      <div style={{ background: "#fff", padding: 20, margin: "50px auto", width: 600 }}>
-        
-        <h3>{editData ? "Edit Invoice" : "Add Invoice"}</h3>
+    <Dialog open={open} fullWidth maxWidth="md">
+      <DialogTitle>{editData ? "Edit Invoice" : "Add Invoice"}</DialogTitle>
 
-        <select
+      <DialogContent>
+        {error && <Alert severity="error">{error}</Alert>}
+
+        {/* CUSTOMER */}
+        <Select
+          fullWidth
           value={form.customerId}
           onChange={(e) =>
-            setForm(prev => ({
-              ...prev,
-              customerId: Number(e.target.value)
-            }))
+            setForm({ ...form, customerId: e.target.value })
           }
+          sx={{ mt: 2 }}
         >
-          <option value="">Select Customer</option>
-          {customers.map((c) => (
-            <option key={c.customerId} value={c.customerId}>
+          <MenuItem value="">Select Customer</MenuItem>
+          {customers.map(c => (
+            <MenuItem key={c.customerId} value={c.customerId}>
               {c.name}
-            </option>
+            </MenuItem>
           ))}
-        </select>
+        </Select>
 
-        <br /><br />
+        {selectedCustomer && (
+          <Typography mt={1}>
+            Email: {selectedCustomer.email || "-"}
+          </Typography>
+        )}
 
-        <input
+        {/* DATE */}
+        <TextField
+          fullWidth
           type="date"
+          label="Invoice Date"
+          InputLabelProps={{ shrink: true }}
           value={form.invoiceDate}
           onChange={(e) =>
-            setForm(prev => ({ ...prev, invoiceDate: e.target.value }))
+            setForm({ ...form, invoiceDate: e.target.value })
           }
+          sx={{ mt: 2 }}
         />
 
-        <input
+        <TextField
+          fullWidth
           type="number"
-          placeholder="Terms"
+          label="Terms"
           value={form.terms}
           onChange={(e) =>
-            setForm(prev => ({
-              ...prev,
-              terms: Number(e.target.value)
-            }))
+            setForm({ ...form, terms: Number(e.target.value) })
           }
+          sx={{ mt: 2 }}
         />
 
-        <p>Due Date: {form.dueDate}</p>
+        <TextField
+          fullWidth
+          label="Due Date"
+          value={form.dueDate}
+          InputProps={{ readOnly: true }}
+          sx={{ mt: 2 }}
+        />
 
-        <hr />
+        {/* ITEMS */}
+        <Box mt={2}>
+          <Button onClick={addRow}>Add Item</Button>
 
-        <button onClick={addRow}>Add Item</button>
+          {form.lines.map((l, i) => (
+            <Box key={i} display="flex" gap={1} mt={1}>
+              <TextField
+                placeholder="Desc"
+                value={l.description}
+                onChange={(e) =>
+                  updateLine(i, "description", e.target.value)
+                }
+              />
+              <TextField
+                type="number"
+                value={l.quantity}
+                onChange={(e) =>
+                  updateLine(i, "quantity", Number(e.target.value))
+                }
+              />
+              <TextField
+                type="number"
+                value={l.unitPrice}
+                onChange={(e) =>
+                  updateLine(i, "unitPrice", Number(e.target.value))
+                }
+              />
+              <Typography>{l.lineTotal}</Typography>
+              <IconButton onClick={() => removeRow(i)}>
+                <DeleteIcon />
+              </IconButton>
+            </Box>
+          ))}
+        </Box>
 
-        {form.lines.map((l, i) => (
-          <div key={i}>
-            <input
-              placeholder="Description"
-              value={l.description}
-              onChange={(e) => updateLine(i, "description", e.target.value)}
-            />
+        <Typography mt={2}>Total: ₹ {total}</Typography>
+      </DialogContent>
 
-            <input
-              type="number"
-              value={l.quantity}
-              onChange={(e) =>
-                updateLine(i, "quantity", Number(e.target.value))
-              }
-            />
-
-            <input
-              type="number"
-              value={l.unitPrice}
-              onChange={(e) =>
-                updateLine(i, "unitPrice", Number(e.target.value))
-              }
-            />
-
-            <span> Total: {l.lineTotal}</span>
-
-            <button onClick={() => removeRow(i)}>X</button>
-          </div>
-        ))}
-
-        <hr />
-
-        <h4>Total: {total}</h4>
-
-        <button onClick={handleSubmit}>
-          {editData ? "Update" : "Save"}
-        </button>
-
-        <button onClick={onClose}>Cancel</button>
-      </div>
-    </div>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="contained" onClick={handleSubmit}>
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }

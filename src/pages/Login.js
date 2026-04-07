@@ -16,14 +16,20 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
+  const validate = () => {
+    if (!email) return "Email is required";
+    if (!/\S+@\S+\.\S+/.test(email)) return "Enter valid email";
+    if (!password) return "Password is required";
+    return "";
+  };
+
   const handleLogin = async (e) => {
-    if (e) e.preventDefault(); 
+    if (e) e.preventDefault();
 
-    console.log("CLICK WORKING");
+    const validationError = validate();
 
-    if (!email || !password) {
-      debugger
-      setError("Email and Password are required");
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -39,11 +45,7 @@ export default function Login() {
 
       window.location.href = "/dashboard";
     } catch (err) {
-      debugger
-      console.log("ERROR:", err);
-
       setError("Invalid email or password");
-       return;
     }
   };
 
@@ -60,6 +62,11 @@ export default function Login() {
             <TextField
               label="Email"
               fullWidth
+              required
+              error={!!error && error.toLowerCase().includes("email")}
+              helperText={
+                error.toLowerCase().includes("email") ? error : ""
+              }
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
@@ -68,6 +75,11 @@ export default function Login() {
               label="Password"
               type="password"
               fullWidth
+              required
+              error={!!error && error.toLowerCase().includes("password")}
+              helperText={
+                error.toLowerCase().includes("password") ? error : ""
+              }
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />

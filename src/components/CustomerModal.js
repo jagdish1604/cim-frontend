@@ -1,5 +1,15 @@
 import { useState, useEffect } from "react";
 import api from "../api/apiClient";
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Button,
+  Alert,
+  Box
+} from "@mui/material";
 
 export default function CustomerModal({ open, onClose, onSuccess, editData }) {
   const [form, setForm] = useState({
@@ -10,21 +20,44 @@ export default function CustomerModal({ open, onClose, onSuccess, editData }) {
   });
 
   const [error, setError] = useState("");
+  const [fieldError, setFieldError] = useState({}); // ✅ inline error
 
   useEffect(() => {
     if (editData) {
       setForm(editData);
+    } else {
+      setForm({
+        name: "",
+        address: "",
+        phoneNumber: "",
+        email: ""
+      });
     }
-  }, [editData]);
+  }, [editData, open]);
+
+  const validate = () => {
+    const errors = {};
+
+    if (!form.name) errors.name = "Name is required";
+    if (!form.address) errors.address = "Address is required";
+    if (!form.phoneNumber) errors.phoneNumber = "Phone is required";
+    if (!form.email) errors.email = "Email is required";
+    else if (!/\S+@\S+\.\S+/.test(form.email))
+      errors.email = "Invalid email";
+
+    setFieldError(errors);
+
+    return Object.keys(errors).length === 0;
+  };
+
+  const isValid =
+    form.name && form.address && form.phoneNumber && form.email;
 
   const handleSubmit = async () => {
+    if (!validate()) return;
+
     try {
       setError("");
-
-      if (!form.name || !form.email || !form.phoneNumber || !form.address) {
-        setError("All fields are required");
-        return;
-      }
 
       if (editData) {
         await api.put(`/customers/${editData.customerId}`, form);
@@ -32,52 +65,95 @@ export default function CustomerModal({ open, onClose, onSuccess, editData }) {
         await api.post("/customers", form);
       }
 
-      onSuccess(); // refresh list
-      onClose();   // close modal
+      onSuccess("Saved successfully");
+      onClose();
     } catch (err) {
-      setError(err.response?.data || "Error occurred");
+      
+      if (
+        err.response?.data?.toLowerCase().includes("email")
+      ) {
+        setFieldError((prev) => ({
+          ...prev,
+          email: err.response.data
+        }));
+      } else {
+        setError("Something went wrong");
+      }
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div style={{ background: "#00000088", position: "fixed", inset: 0 }}>
-      <div style={{ background: "#fff", padding: 20, margin: "100px auto", width: 400 }}>
-        
-        <h3>{editData ? "Edit Customer" : "Add Customer"}</h3>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle>
+        {editData ? "Edit Customer" : "Add Customer"}
+      </DialogTitle>
 
-        {error && <p style={{ color: "red" }}>{error}</p>}
+      <DialogContent>
+        <Box display="flex" flexDirection="column" gap={2} mt={1}>
+          
+          {error && <Alert severity="error">{error}</Alert>}
 
-        <input
-          placeholder="Name"
-          value={form.name}
-          onChange={e => setForm({ ...form, name: e.target.value })}
-        />
+          <TextField
+            label="Customer Name"
+            fullWidth
+            required
+            value={form.name}
+            error={!!fieldError.name}
+            helperText={fieldError.name}
+            onChange={(e) =>
+              setForm({ ...form, name: e.target.value })
+            }
+          />
 
-        <input
-          placeholder="Address"
-          value={form.address}
-          onChange={e => setForm({ ...form, address: e.target.value })}
-        />
+          <TextField
+            label="Address"
+            fullWidth
+            required
+            value={form.address}
+            error={!!fieldError.address}
+            helperText={fieldError.address}
+            onChange={(e) =>
+              setForm({ ...form, address: e.target.value })
+            }
+          />
 
-        <input
-          placeholder="Phone"
-          value={form.phoneNumber}
-          onChange={e => setForm({ ...form, phoneNumber: e.target.value })}
-        />
+          <TextField
+            label="Phone Number"
+            fullWidth
+            required
+            value={form.phoneNumber}
+            error={!!fieldError.phoneNumber}
+            helperText={fieldError.phoneNumber}
+            onChange={(e) =>
+              setForm({ ...form, phoneNumber: e.target.value })
+            }
+          />
 
-        <input
-          placeholder="Email"
-          value={form.email}
-          onChange={e => setForm({ ...form, email: e.target.value })}
-        />
+          <TextField
+            label="Email Address"
+            fullWidth
+            required
+            value={form.email}
+            error={!!fieldError.email}
+            helperText={fieldError.email}
+            onChange={(e) =>
+              setForm({ ...form, email: e.target.value })
+            }
+          />
+        </Box>
+      </DialogContent>
 
-        <br /><br />
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
 
-        <button onClick={handleSubmit}>Save</button>
-        <button onClick={onClose}>Cancel</button>
-      </div>
-    </div>
+        <Button
+          variant="contained"
+          onClick={handleSubmit}
+          disabled={!isValid} 
+        >
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }

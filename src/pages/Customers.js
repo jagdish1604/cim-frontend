@@ -2,8 +2,23 @@ import { useEffect, useState } from "react";
 import api from "../api/apiClient";
 import { DataGrid } from "@mui/x-data-grid";
 import CustomerModal from "../components/CustomerModal";
-import { Snackbar } from "@mui/material";
+import {
+  Snackbar,
+  Container,
+  Typography,
+  Box,
+  Button,
+  TextField,
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogActions
+} from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
 import Navbar from "../components/Navbar";
+
 export default function Customers() {
   const [snack, setSnack] = useState("");
   const [rows, setRows] = useState([]);
@@ -14,39 +29,47 @@ export default function Customers() {
   const [rowCount, setRowCount] = useState(0);
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState(""); // ✅ debounce
 
   const [open, setOpen] = useState(false);
   const [editData, setEditData] = useState(null);
 
+  const [deleteId, setDeleteId] = useState(null); // ✅ dialog state
+
+  // ✅ Debounce logic
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const fetchCustomers = async () => {
-  console.log("Calling Customers API..."); // 👈 ADD THIS
+    setLoading(true);
+    try {
+      const res = await api.get("/customers", {
+        params: {
+          search: debouncedSearch || null, // ✅ use debounced
+          sortBy: "CreatedAt",
+          sortDir: "desc",
+          page: page + 1,
+          pageSize
+        }
+      });
 
-  setLoading(true);
-  try {
-    const res = await api.get("/customers", {
-     params: {
-  search: search || null, 
-  sortBy: "CreatedAt",
-  sortDir: "desc",
-  page: page + 1,
-  pageSize
-}
-    });
-
-    console.log("Customers API Response:", res.data); // 👈 ADD
-
-    setRows(res.data.data);
-    setRowCount(res.data.totalCount);
-  } catch (err) {
-    console.error(err);
-    setSnack("Error loading customers");
-  }
-  setLoading(false);
-};
+      setRows(res.data.data);
+      setRowCount(res.data.totalCount);
+    } catch (err) {
+      console.error(err);
+      setSnack("Error loading customers");
+    }
+    setLoading(false);
+  };
 
   useEffect(() => {
     fetchCustomers();
-  }, [page, pageSize, search]);
+  }, [page, pageSize, debouncedSearch]); // ✅ updated
 
   const columns = [
     { field: "name", headerName: "Name", flex: 1 },
@@ -59,100 +82,130 @@ export default function Customers() {
       headerName: "Actions",
       flex: 1,
       renderCell: (params) => (
-        <>
-          <button
+        <Box display="flex" gap={1}>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<EditIcon />}
             onClick={() => {
               setEditData(params.row);
               setOpen(true);
             }}
           >
             Edit
-          </button>
+          </Button>
 
-          <button
-            onClick={async () => {
-              if (window.confirm("Delete?")) {
-                try {
-                  await api.delete(`/customers/${params.row.customerId}`);
-                  setSnack("Customer deleted successfully");
-                  fetchCustomers();
-                } catch {
-                  setSnack("Delete failed");
-                }
-              }
-            }}
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={() => setDeleteId(params.row.customerId)} // ✅ dialog trigger
           >
             Delete
-          </button>
-        </>
+          </Button>
+        </Box>
       )
     }
   ];
 
   return (
     <>
-    <Navbar/>
-    <div style={{ padding: 20 }}>
-      <h2>Customers</h2>
+      <Navbar />
 
-      <button
-        onClick={() => {
-          setEditData(null);
-          setOpen(true);
-        }}
-        style={{ marginBottom: 10 }}
-      >
-        Add Customer
-      </button>
+      <Container sx={{ mt: 4 }}>
+        <Typography variant="h4" fontWeight="bold" gutterBottom>
+          Customers
+        </Typography>
 
-      <input
-        placeholder="Search..."
-        value={search}
-        onChange={(e) => {
-          setPage(0);
-          setSearch(e.target.value);
-        }}
-        style={{ marginBottom: 10, padding: 5, marginLeft: 10 }}
-      />
+        <Paper sx={{ p: 2, mb: 2, borderRadius: 3 }}>
+          <Box
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+            flexWrap="wrap"
+            gap={2}
+          >
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => {
+                setEditData(null);
+                setOpen(true);
+              }}
+            >
+              Add Customer
+            </Button>
 
-      <div style={{ height: 500 }}>
-        <DataGrid
-          rows={rows}
-          columns={columns}
-          getRowId={(row) => row.customerId}
-          loading={loading}
+            <TextField
+              size="small"
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => {
+                setPage(0);
+                setSearch(e.target.value);
+              }}
+            />
+          </Box>
+        </Paper>
 
-          pagination
-          paginationMode="server"
-          rowCount={rowCount}
+        <Paper sx={{ height: 500, borderRadius: 3 }}>
+          <DataGrid
+            rows={rows}
+            columns={columns}
+            getRowId={(row) => row.customerId}
+            loading={loading}
+            pagination
+            paginationMode="server"
+            rowCount={rowCount}
+            page={page}
+            onPageChange={(newPage) => setPage(newPage)}
+            pageSize={pageSize}
+            onPageSizeChange={(newSize) => setPageSize(newSize)}
+            rowsPerPageOptions={[5, 10, 20]}
+          />
+        </Paper>
 
-          page={page}
-          onPageChange={(newPage) => setPage(newPage)}
-
-          pageSize={pageSize}
-          onPageSizeChange={(newSize) => setPageSize(newSize)}
-
-          rowsPerPageOptions={[5, 10, 20]}
+        <CustomerModal
+          open={open}
+          onClose={() => setOpen(false)}
+          onSuccess={(msg) => {
+            setSnack(msg);
+            fetchCustomers();
+          }}
+          editData={editData}
         />
-      </div>
 
-      <CustomerModal
-        open={open}
-        onClose={() => setOpen(false)}
-        onSuccess={(msg) => {
-          setSnack(msg);
-          fetchCustomers();
-        }}
-        editData={editData}
-      />
+        {/* ✅ MUI DELETE DIALOG */}
+        <Dialog open={!!deleteId} onClose={() => setDeleteId(null)}>
+          <DialogTitle>Delete this customer?</DialogTitle>
+          <DialogActions>
+            <Button onClick={() => setDeleteId(null)}>Cancel</Button>
+            <Button
+              color="error"
+              onClick={async () => {
+                try {
+                  await api.delete(`/customers/${deleteId}`);
+                  setSnack("Customer deleted successfully");
+                  fetchCustomers();
+                } catch {
+                  setSnack("Delete failed");
+                }
+                setDeleteId(null);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-      <Snackbar
-        open={!!snack}
-        autoHideDuration={3000}
-        message={snack}
-        onClose={() => setSnack("")}
-      />
-    </div>
+        <Snackbar
+          open={!!snack}
+          autoHideDuration={3000}
+          message={snack}
+          onClose={() => setSnack("")}
+        />
+      </Container>
     </>
   );
 }
